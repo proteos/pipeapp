@@ -4,261 +4,213 @@
 App common library with App class
 """
 
-# region imports
+# region: imports
 import sys
-from os import path, environ, devnull, getenv
-from datetime import datetime
-from tempfile import mkdtemp
-import configparser
+from os import environ, getenv, path, getcwd
+import logging
 
-from .shell import make_dir, remove_dir, full_path
-# endregion
+from .config import Config
+from primerdesign.shell import full_path, make_dir, remove_dir
 
-# region: constants
-__author__ = 'David Managadze'
-# endregion
-
-# region: variables
 
 # endregion
 
-
-class App(object):      # HomoloGene App Class
-    """
-    Template class for HomoloGene apps
-    """
-
+# region: classes
+class BasicApp:
     @classmethod
     def main(cls, **kwargs):
         """
-        main class method to create, run and exit application
-        calls init(), run(), exit() methods
-        they should be overriden and re-created in the actual application
+        Main class and organizing method to create, run and exit app,
+        calls hook methods e.g. init(), run(), exit() which should be overridden
+        and re-created in the actual application.
+
         :return: return code of the application
         :rtype: int
         """
-        # print "MAIN: kwargs:", kwargs
         app = cls(**kwargs)
-        app.init(**kwargs)
-        app.run(**kwargs)
-        app.exit(**kwargs)
-        app.mark_task_done()
-        return 0
+        try:
+            app.log.info('# --- Initializing app --- #')
+            app.init(**kwargs)
+            app.log.info('//\n')
+            app.log.info('# --- Running main body --- #')
+            app.run(**kwargs)
+            app.log.info('//\n')
+            app.log.info('# --- Exiting --- #')
+            app.exit(**kwargs)
+            app.post_exit(**kwargs)
+            app.log.info('//\n')
+            app.log.info('---   FINISHED   ---\n\n')
+            return 0
 
-    def __init__(self, name=None, version="0.0", debugmode=False, conf=None, env=environ,
-                 input=None, input_manifest=None, workdir=None, is_wnode=False, continue_task=False,
-                 logfile=None, stdout=sys.stdout, stderr=sys.stderr, quiet=False, **kwargs):
+        except Exception as e:
+            app.log.exception(str(e))
+            return -1
+
+    def __init__(self, name=None, conf=None, log=None, debug=False, no_conf_root_key=False, **kwargs):
         """
-        :param name:        app name
-        :param version:     app version
-        :param conf:        config file name
-        :param logmode:     'normal' or 'debug', determines whether to show debug messages
-        :param argv:        arguments
-        :param env:         environment variables (or dictionary with similar data)
-        :param logfile:     log file name
-        :param workdir:     work directory path
-        :param input:       input data (file/directory path)
+        Initialize BasicApp instance.
+
+        :param name:    app name
+        :param conf:    config file name
+        :param log:     log file name
+        :param debug:   debug mode
+        :param workdir: work directory path
+        :param no_conf_root_key:    expect to have a root key with this app name in the config file
         """
-        # print "*** Initializing HGApp..."
+        self.name = name or 'app'
         self.argv = sys.argv
-        self.conf_path = full_path(conf)
-        self.env = env
-        self.name = name
-        self.ver = version
-        self.input = full_path(input)
-        self.input_manifest = full_path(input_manifest)
-        self.workdir = full_path(workdir)
-        self.is_wnode = is_wnode
-        self.continue_task = continue_task
-        self.quiet = quiet  # be quite, don't log anything to the sceen
+        self.logfile = log
+        self.log = self._make_logger(logfile_name=self.logfile, debug=debug)
+        self.log.info('\n\n# ---   Starting app: {0}   --- #'.format(self.name))
+        self.log.info('Command: {}'.format(' '.join(self.argv)))
+        conf_root_key = None
+        if not no_conf_root_key:
+            conf_root_key = self.name
+        self.conf = self._make_config(conf_file=conf, root_key=conf_root_key)
+        self.debug = debug
+        self.conf.DEBUG = debug
 
-        if self.input_manifest and self.input:
-            print("\n\nERROR: please provide either input or input manifest, *not* both.\n\n", file=sys.stderr)
-            sys.exit(1)
-        if self.input_manifest and not path.exists(self.input_manifest):
-            print("\n\nERROR: input manifest file does not exist: ", self.input_manifest, "\n\n", file=sys.stderr)
-            sys.exit(1)
-        if self.input and not path.exists(self.input):
-            # using this way of reporting because the outputs are not yet initialized
-            print("\n\nERROR: input does not exist: ", self.input, "\n\n", file=sys.stderr)
+    def init(self, **kwargs):
+        """Virtual method to initialize app, must be overridden in the child class."""
+        raise NotImplementedError
+
+    def run(self, **kwargs):
+        """Virtual method to run the app, must be overridden in the child class."""
+        raise NotImplementedError
+
+    def exit(self, **kwargs):
+        """Clean exit from application."""
+        raise NotImplementedError
+
+    def post_exit(self, **kwargs):
+        """Clean exit from application."""
+        pass
+
+    def _make_config(self, conf_file=None, root_key=None):
+        """
+        Create app configuration.
+
+        :param conf_file: file with configuration
+        :return: configuration object
+        """
+        conf = Config()
+        var_prefix = self.name.upper() + '_'  # env vars must begin with APP_NAME_ to be added to config
+
+        # read config file name from conf_file variable and read config from that file
+        conf_file_yaml = None
+        conf_file_env_var = '{}CONFIG_YAML'.format(var_prefix)
+        conf_file_env = getenv(conf_file_env_var)
+        if conf_file is not None:
+            conf_file_yaml = conf_file
+        # otherwise, read env var <APP_NAME>_CONFIG_YAML as config file name
+        elif conf_file_env is not None:
+            conf_file_yaml = conf_file_env
+        self.log.info('Reading config from file: {}'.format(conf_file_yaml))
+        conf.from_yaml(filename=conf_file_yaml, root_key=root_key)
+
+        # read env vars and update conf
+        self.log.info('Reading environment variables')
+        # self.log.info('var_prefix: ' + var_prefix)
+        for var in environ:
+            # self.log.info('@ var: ' + str(var))
+            if var.startswith(var_prefix):
+                # self.log.info('    add to config')
+                key = var[len(var_prefix):]
+                val = environ[var]
+                conf[key] = val
+                self.log.info('    env var: ${}={}'.format(key, val))
+        return conf
+
+    def _make_logger(self, logfile_name, file_mode='w', debug=False):
+        """
+        Create logger object for the app with streams to console and logfile.
+
+        :param logfile_name: logfile name
+        :param file_mode: mode of writing to file; should be a valid file mode (e.g. 'w', 'a', etc)
+        :param debug: should we use DEBUG mode?
+        :return: logger object
+        """
+        # create logger
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.DEBUG)
+        # create console handler with default level INFO, unless function arg `debug` says it to be DEBUG
+        console_h = logging.StreamHandler(stream=sys.stdout)
+        if debug:
+            console_h.setLevel(logging.DEBUG)
+        else:
+            console_h.setLevel(logging.INFO)
+        console_fmt = logging.Formatter(fmt='%(message)s')
+        console_h.setFormatter(console_fmt)
+        logger.addHandler(console_h)
+        # create logfile handler and set its level do DEBUG
+        if logfile_name is not None:
+            logf_h = logging.FileHandler(filename=logfile_name, mode=file_mode)
+            logf_h.setLevel(logging.DEBUG)
+            logf_fmt = logging.Formatter(fmt='%(asctime)s\t%(levelname)s:\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+            logf_h.setFormatter(logf_fmt)
+            logger.addHandler(logf_h)
+        return logger
+
+    def log_info(self, *args):
+        text_out = ' '.join(str(a) for a in args)
+        self.log.info(text_out.strip())
+
+    def log_debug(self, *args):
+        text_out = ' '.join(str(a) for a in args)
+        self.log.debug(text_out.strip())
+
+    def log_die(self, *args):
+        text_out = 'CRITICAL ERROR:' + ' '.join(str(a) for a in args) + '\n\n'
+        if self.debug:
+            raise SystemError(text_out)
+        else:
+            self.log.exception(text_out.strip())
             sys.exit(1)
 
-        if not self.workdir:
-            # using this way of reporting because the outputs are not yet initialized
-            print("\n\nERROR: you need to provide working directory path by --workdir or -d parameters\n\n", file=sys.stderr)
-            sys.exit(1)
 
-        # workdir subdir names
+class BasicPipelineApp(BasicApp):
+    def __init__(self, workdir=None, **kwargs):
+
+        # workdir and subdir names
+        if workdir:
+            self.workdir = full_path(workdir)
+        else:
+            self.workdir = full_path(path.join(getcwd(), self.name))
+
         self.dir_tmp = path.join(self.workdir, "tmp")
         self.dir_in = path.join(self.workdir, "in")
         self.dir_out = path.join(self.workdir, "out")
         self.dir_log = path.join(self.workdir, "log")
         # create directory structure, if init_dirs was provided
 
-        # if we are running as a worker node, we don't need to create all dirs,
-        # we just need our own tmp dir
-        if self.is_wnode:
-            # we are a worker node, so:
-            try:
-                self.dir_tmp = mkdtemp(prefix="job_", dir=self.dir_tmp)
-            except OSError:
-                raise Exception("HGApp Class: can not create tmp directory for --wnode mode: " + self.dir_tmp + "/job_*")
-        elif not self.continue_task:
-            # if this is a normal task and NOT a continuing task, (re-)create workdir and all subdirs
-            if path.exists(self.workdir):
-                remove_dir(self.workdir)
-            make_dir(self.workdir)
-            make_dir(self.dir_tmp)
-            make_dir(self.dir_in)
-            make_dir(self.dir_out)
-            make_dir(self.dir_log)
-
+        # create workdir and all subdirs
+        if path.exists(self.workdir):
+            remove_dir(self.workdir)
+        make_dir(self.workdir)
+        make_dir(self.dir_tmp)
+        make_dir(self.dir_in)
+        make_dir(self.dir_out)
+        make_dir(self.dir_log)
         # create log file
-        self.logfile = logfile or path.join(self.dir_log, self.name + ".log")
+        if 'log' not in kwargs or kwargs.get('log') is None:
+            log = path.join(self.dir_log, kwargs['name'] + ".log")
+            kwargs['log'] = log
+        super().__init__(**kwargs)
+        self.log.info('Work directory: {}'.format(self.workdir))
+        self.log.info('//\n')
 
-        # set up stdout
-        if self.quiet:
-            self._stdouth = open(devnull, 'w')
-        elif stdout == sys.stdout:
-            self._stdouth = stdout
-        elif isinstance(stdout, str):
-            self._stdouth = open(stdout, 'w', )
+    def post_exit(self, **kwargs):
+        """ Cleanup procedures after exit() """
+        if not self.debug:
+            remove_dir(self.dir_tmp)
 
-        # set up stderr
-        if stderr == sys.stderr:
-            self._stderrh = stderr
-        elif isinstance(stdout, str):
-            self._stderrh = open(stderr, 'w', )
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """ Cleanup procedures after exit() """
+        if not self.debug:
+            remove_dir(self.dir_tmp)
 
-        # set log mode
-        if debugmode:
-            self.log_info("\n\n!!! --- Running in debug mode! --- !!!\n\n")
-            self.logmode = "debug"
-        else:
-            self.logmode = "normal"
-
-        # set up configuration
-        if self.conf_path is not None:
-            self.conf_read(self.conf_path)
-
-        self.log_info("\n\n# ---   APP: {0}   --- #\n".format(self.name))
-        self.log_info("---   INITIALIZING       ---")
-        self.log_info("COMMAND:          ", ' '.join(self.argv))
-        self.log_info("\n\n")
-        self.log_info("* input:          ", self.input)
-        self.log_info("* input manifest: ", self.input_manifest)
-        self.log_info("* work dir:       ", self.workdir)
-        self.log_info("//\n")
-        self.log_info("\n---      RUNNING         ---\n")
-
-    def init(self, **kwargs):
-        """
-        virtual method, must be overridden in the child class
-        """
-        raise NotImplementedError
-
-    def run(self, **kwargs):
-        """
-        virtual method, must be overridden in the child class
-        """
-        # print "RUN: kwargs:", kwargs
-        raise NotImplementedError
-
-    def exit(self, **kwargs):
-        """
-        clean exit from application
-        """
-        self.log_info("* cleaning up")
-        # examples
-        # ddir = os.path.join(app.dir_out, os.path.basename(app.dir_out_accs))
-        # app.log_info("  + moving", app.dir_out_accs, "to:", ddir)
-        # move_dir(app.dir_out_accs, ddir)
-        # ddir = os.path.join(app.dir_out, os.path.basename(app.dir_out_fasta))
-        # app.log_info("  + moving", app.dir_out_fasta, "to:", ddir)
-        # move_dir(app.dir_out_fasta, ddir)
-        # remove(app.dir_tmp)
-
-        self.log_info("\n# ---   FINISHED   --- #\n")
-
-    def crash_exit(self):
-        """
-        Crash exit from application
-        """
-        self.log_info("\n# ---   APP CRASHED!--- #\n")
-        self.log_info("* cleaning up")
-        # remove(self.dir_tmp)
-        self.log_info("\n# ---   FINISHED   --- #\n")
-
-    def mark_task_done(self):
-        """ Mark task of the app as done. Just creates file '.done' in workdir. """
-        trigger_fname = path.join(self.workdir, '.done')
-        with open(trigger_fname, 'w') as fh:
-            pass
-# region messaging/logging methods
-
-    @property
-    def logfile(self):
-        return self._logfile
-
-    @logfile.setter
-    def logfile(self,f):
-        self._logfile = path.expanduser(f)
-        self._logfh = open(self._logfile, 'w')
-
-    def log_debug(self, *args):
-        if self.logmode == "normal":
-            return
-        elif self.logmode == "debug":
-            text_out = ' '.join(str(a) for a in args)
-            print(text_out, file=self._stdouth)
-            self.log(text_out)
-        else:
-            self.die('HGApp logmode must be either "normal" or "debug"')
-
-    def log_info(self, *args):
-        text_out = ' '.join(str(a) for a in args)
-        print(text_out, file=self._stdouth)
-        self.log(text_out.strip())
-
-    def log_warning(self, *args):
-        text_out = 'WARNING: '
-        text_out += ' '.join(str(a) for a in args)
-        print(text_out, file=self._stdouth)
-        self.log(text_out)
-
-    def log_error(self, *args):
-        text_out = 'ERROR: '
-        text_out += ' '.join(str(a) for a in args)
-        print(text_out, file=self._stderrh)
-        self.log(text_out)
-
-    def die(self, *args):
-        text_out = 'CRITICAL ERROR: '
-        text_out += ''.join(str(a) for a in args)
-        text_out += '\n\nTERMINATING...\n\n'
-        print(text_out, file=self._stdouth)
-        self.log(text_out)
-        sys.exit(1)
-
-    def log(self, *args):
-        now = datetime.now()
-        date = now.strftime('%Y-%m-%d')
-        time = now.strftime('%H:%M')
-        text_out = date + '\t' + time + '\t'
-        text_out += ' '.join(str(a) for a in args)
-        print(text_out, file=self._logfh)
-        self._logfh.flush()
 # endregion
 
-    def conf_read(self, conffile):
-        if path.isfile(conffile):
-            self.conf = conffile
-        self.conf = configparser.RawConfigParser()
-        self.conf.read(conffile)
+# region: functions
 
-    def config_write(self, conffile):
-        pass
-
-    def status(self):
-        pass
-
+# endregion
