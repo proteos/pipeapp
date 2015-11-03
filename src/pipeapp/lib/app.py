@@ -10,7 +10,7 @@ from os import environ, getenv, path, getcwd
 import logging
 
 from .config import Config
-from primerdesign.shell import full_path, make_dir, remove_dir
+from .shell import full_path, make_dir, remove_dir
 
 
 # endregion

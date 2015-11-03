@@ -1,25 +1,13 @@
 #!/usr/bin/env python
 
-'''
-Align sequences using MUSCLE.
-
-This app will:
-* read fasta files from input dir or manifest file
-* create alignments files
-
-Example command:
-align_muscle.py --input /path/to/fasta/files/ --workdir muscle_aln/ --conf homologene.conf --debug
-
-Output: <workdir>/out/aln/*.aln alignment files
-'''
+"""
+Example app that uses BasicPipelineApp class
+"""
 
 # region: imports
-from os import path, environ
-from glob import glob
 from argparse import ArgumentParser
 
-from pipeapp.lib.app import App
-from pipeapp.lib.shell import call_shell_cmd, file_name_no_ext, move_dir, make_dir, move_files, remove_dir
+from pipeapp.lib.app import BasicPipelineApp
 
 
 # endregion
@@ -34,10 +22,10 @@ __author__ = 'David Managadze'
 # endregion
 
 
-class ExampleApp(App):
-    '''
+class ExampleApp(BasicPipelineApp):
+    """
     Example of using the pipeline app class
-    '''
+    """
 
     def init(self, input=None, input_manifest=None, **kwargs):
         self.log_info('# reading configuration, setting variables')
@@ -49,7 +37,7 @@ class ExampleApp(App):
         self.log_info('# cleaning up')
 
 
-if __name__ == '__main__':
+def run_from_console():
     # set up args
     arg_parser = ArgumentParser(prog='example_app',
                                 description='',
@@ -62,14 +50,11 @@ if __name__ == '__main__':
     arg_parser.add_argument('--debug', action='store_true', help='run in debug mode')
     # initialize command line parameters
     args = arg_parser.parse_args()
-
-    # set defaults
-    # input_manifest = args.input_manifest
-    conf = args.conf or path.join(environ['HG_ROOT'], 'homologene', 'conf/homologene.conf')
-
-    ExampleApp.main(name=arg_parser.prog, debugmode=args.debug, conf=conf, env=environ,
-                          input=args.input, input_manifest=args.input_manifest, workdir=args.workdir, is_wnode=args.wnode,
-                          logfile=args.log)
+    args_dict = vars(args)
+    args_dict['name'] = arg_parser.prog
+    args_dict['no_conf_root_key'] = True
+    ExampleApp.main(**args_dict)
 
 
-
+if __name__ == '__main__':
+    exit(run_from_console())
