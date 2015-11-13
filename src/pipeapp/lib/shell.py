@@ -138,6 +138,25 @@ def run_shell_cmd(cmd):
     return pipe_stdout, pipe_stderr
 
 
+def call_shell_cmd(cmd):
+    """
+    call shell command and wait for its finish
+
+    :param cmd: command
+    :type cmd: str
+    :return: exit code
+    :rtype: int
+    """
+    call(cmd, shell=True)
+
+
+def file_name_no_ext(f):
+    """
+    returns filename without extension
+    """
+    return path.splitext(path.basename(f))[0]
+
+
 def make_dir(dir_path):
     """
     Create directory given the directory path. This function can create nested directories, similar to `mkdir -p ...`.

@@ -7,7 +7,8 @@ Example app that uses BasicPipelineApp class
 # region: imports
 from argparse import ArgumentParser
 
-from pipeapp.lib.app import BasicPipelineApp
+from pipeapp.lib.app import PipelineApp
+from pipeapp.lib.manifest import ManifestFile
 
 
 # endregion
@@ -22,13 +23,17 @@ __author__ = 'David Managadze'
 # endregion
 
 
-class ExampleApp(BasicPipelineApp):
+class ExampleApp(PipelineApp):
     """
     Example of using the pipeline app class
     """
 
     def init(self, input=None, input_manifest=None, **kwargs):
         self.log_info('# reading configuration, setting variables')
+        self.input_manifest = input_manifest
+        mft = ManifestFile(self.input_manifest, generator="align_fasta", action="read")
+        fasta_files = mft.entries
+        self.log_info(('# working with fasta files:', fasta_files))
 
     def run(self, input=None, input_manifest=None, **kwargs):
         self.log_info('# running app')

@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-
 """
-App common library with App class
+Library with App class
 """
 
 # region: imports
@@ -70,19 +68,19 @@ class BasicApp:
         self.debug = debug
         self.conf.DEBUG = debug
 
-    def init(self, **kwargs):
+    def init(self, **kw):
         """Virtual method to initialize app, must be overridden in the child class."""
         raise NotImplementedError
 
-    def run(self, **kwargs):
+    def run(self, **kw):
         """Virtual method to run the app, must be overridden in the child class."""
         raise NotImplementedError
 
-    def exit(self, **kwargs):
+    def exit(self, **kw):
         """Clean exit from application."""
         raise NotImplementedError
 
-    def post_exit(self, **kwargs):
+    def post_exit(self, **kw):
         """Clean exit from application."""
         pass
 
@@ -153,7 +151,7 @@ class BasicApp:
 
     def log_info(self, *args):
         text_out = ' '.join(str(a) for a in args)
-        self.log.info(text_out.strip())
+        self.log.info(text_out)
 
     def log_debug(self, *args):
         text_out = ' '.join(str(a) for a in args)
@@ -168,7 +166,7 @@ class BasicApp:
             sys.exit(1)
 
 
-class BasicPipelineApp(BasicApp):
+class PipelineApp(BasicApp):
     def __init__(self, workdir=None, **kwargs):
 
         # workdir and subdir names
