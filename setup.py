@@ -36,5 +36,8 @@ setup(
         'console_scripts': [
             'example_app = pipeapp.apps.example_app:run_from_console'
         ]
-    }
+    },
+    scripts=[
+        'bin/start_pipeline.sh'
+    ]
 )

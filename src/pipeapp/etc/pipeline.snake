@@ -1,0 +1,50 @@
+######################################################
+# Example pipeline described in Snakemake format
+######################################################
+INPUT_DIR = '/inputs'
+OUTPUT_DIR = '/outputs'
+SPECIES = config['species']
+
+workdir: OUTPUT_DIR
+
+# region: rules
+
+rule all:
+    input:
+        'last_step'
+
+
+### Step 1
+rule step_1:
+    input:
+        INPUT_DIR
+    output:
+        directory('step_1')
+    shell:
+        'example_app --workdir {output}.tmp'
+        ' && mv {output}.tmp {output}'
+
+
+### --- more pipeline steps go here --- ###
+
+
+### last step
+rule last_step:
+    input:
+        'last_step'
+    output:
+        directory('extract_polyas')
+    shell:
+        'example_app --workdir {output}.tmp'
+        ' && mv {output}.tmp {output}'
+
+onstart:
+    print('\n\n### --- Starting pipeline --- ###\n\n')
+
+onsuccess:
+    print('\n\n### --- Pipeline finished successfully --- ###\n\n')
+
+onerror:
+    print('\n\n### --- Pipeline FAILED! --- ###\n\n')
+
+# endregion
